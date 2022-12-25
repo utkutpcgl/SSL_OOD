@@ -1,0 +1,18 @@
+# Optimal energy bounds for CIFAR10 (and 80 m tiny images), (should be different for random 300k images.)
+# Chosen around the mean of all samples (combining all in- and out-of-dist samples).
+# We want m_in to be lower than m_out because we want ID samples that have higher energy than m_in to penalize (teach) the model.
+# Also we want OD samples with lower energy than m_out to teach (penalize) the model. Hence m_out has to be larger.
+
+m_in: -23 # As expected, imposing too small of an energy margin m in for in-distribution data may lead to difficulty in optimization and degradation in performance.
+m_out: -5 # Paper note:Overall the method is not very sensitive to m out in the range chosen.
+# Temperature 1 gave the best results. (shown in Supplementary Material.)
+# energy_loss_weight
+lambda: 0.1
+# Energy threshold for OOD is not deterministic. Here is the explanation, it should be chosen to achieve FPR95: https://github.com/wetliu/energy_ood/issues/8 https://github.com/wetliu/energy_ood/issues/6
+energy_threshold:
+
+# Regular train settings.
+epochs: 10
+initial_lr: 0.001 # cosine decay
+batch_size_ID: 128
+batch_size_OD: 256
