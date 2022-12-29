@@ -2,18 +2,19 @@
 OOD with SSL
 
 
- 
 # Image classification
-- First see the OOD results of regular WideResnet without fine tuning.
-- Then see OOD resutls of WideResnet with fine tuning.
+1. Steps without OOD fine tuning:
+- First see the OOD results of regular (not pretrained) ResNet without fine tuning.
+- First see the OOD results of pretrained ResNet without fine tuning.
+- See OOD results of SSL (for BYOL, Barlow, DINO) Resnet.
 
-- Then see the OOD results trained with SSL:
-    - Apply the train wide resnet with the proposed SLL methods.
-        - Then evaluate the results both with and without fine tuning.
-        - Finally compare SSL vs reguler performance.
+2. Steps with OOD fine tuning.
+- See the results of all the same methods as in the first steps
+
+
 
 # Object Detection
-
+*No sufficient time*
 
 # Energy based model
 
