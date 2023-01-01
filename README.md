@@ -1,5 +1,6 @@
 # SSL_OOD
 OOD with SSL
+* Training SSL methods are infeasable (Barlow Twins 7 days on 16 v100s). Hence, I must use ResNet for OOD. I need CIFAR-10 pre-trained ResNet.
 
 
 # Image classification
