@@ -12,24 +12,25 @@ Device = "cuda:0"
 # Regular CIFAR-10 train setting for ResNet, could have been tuned for SSL.
 MaxLr = 0.1  # Looked from kuangliu's code.
 MinLr = 0.00001  # Default is 0 in torch cosine annealing.
-MaxPeriod = 50  # Max period gave best results in cosine annealing paper.
+MaxPeriod = 50  # Max period 200 gave best results in cosine annealing paper.
 TotalEpochs = MaxPeriod
 
 # Data transformations
 # No need to resize -> CIFAR-10 is 32x32
+# Was trained on wrong std previously: (0.2023, 0.1994, 0.2010)
 transform_train = transforms.Compose(
     [
         transforms.RandomCrop(32, padding=4, padding_mode="symmetric"),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), [0.2471, 0.2436, 0.2616]),
     ]
 )
 
 transform_test = transforms.Compose(
     [
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), [0.2471, 0.2436, 0.2616]),
     ]
 )
 
@@ -126,7 +127,7 @@ def full_train_cifar10(net, model_setting, device=Device):
     for epoch in range(TotalEpochs):
         train(net, epoch, optimizer=optimizer, criterion=criterion, device=device)
         best_acc = test(net, epoch, criterion=criterion, best_acc=best_acc, device=device, model_setting=model_setting)
-        scheduler.step()
+        scheduler.step()  # This increases current iteration (step) once every epoch (not iteration step as explained in the paper.)
 
 
 if __name__ == "__main__":

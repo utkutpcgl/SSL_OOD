@@ -13,6 +13,12 @@ energy_threshold:
 
 # Regular train settings.
 epochs: 10
-initial_lr: 0.001 # cosine decay
+initial_lr: 0.001 # cosine decay initial max lr 1e-3
+final_lr: 0.000001 # cosine decayfinal min lr 1e-6
 batch_size_ID: 128
 batch_size_OD: 256
+batch_size_TEST: 200
+
+# This paper took parameters from Outlier Exposure
+decay: 0.0005
+momentum: 0.9 # Was not shared in both papers (this and OE), but was shared in code.
