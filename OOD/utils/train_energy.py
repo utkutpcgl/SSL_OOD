@@ -73,7 +73,7 @@ MEAN = [x / 255 for x in [125.3, 123.0, 113.9]]
 STD = [x / 255 for x in [63.0, 62.1, 66.7]]
 
 
-def get_raw_network(model_setting, cifar10_pretrained_bool, device):
+def get_raw_network(model_setting, cifar10_pretrained_bool):
     if cifar10_pretrained_bool:
         weight_path = CIFAR10_WEIGHTS[model_setting]
     else:
@@ -106,7 +106,7 @@ def get_raw_network(model_setting, cifar10_pretrained_bool, device):
             ResNet.fc = torch.nn.Linear(number_of_input_features, NUMBER_OF_CLASSES)
     if NGPU > 1:
         ResNet = torch.nn.DataParallel(ResNet, device_ids=list(range(NGPU)))
-    return ResNet.to(device)
+    return ResNet.to(DEVICE)
 
 
 def freeze_resnet(ResNet):
@@ -161,7 +161,7 @@ def get_data_loaders():
     return train_loader_in, train_loader_out, test_loader
 
 
-def train(net, optimizer, scheduler, train_loader_in, train_loader_out, state, device):
+def train(net, optimizer, scheduler, train_loader_in, train_loader_out, state):
     net.train()  # enter train mode
     loss_avg = 0.0
     # start at a random point of the outlier dataset; this induces more randomness without obliterating locality
@@ -169,7 +169,7 @@ def train(net, optimizer, scheduler, train_loader_in, train_loader_out, state, d
     for in_set, out_set in zip(train_loader_in, train_loader_out):
         data = torch.cat((in_set[0], out_set[0]), 0)
         target = in_set[1]
-        data, target = data.to(device), target.to(device)
+        data, target = data.to(DEVICE), target.to(DEVICE)
         # forward
         x = net(data)
         # backward
@@ -190,13 +190,13 @@ def train(net, optimizer, scheduler, train_loader_in, train_loader_out, state, d
 
 
 # test function
-def test(net, test_loader, state, device):
+def test(net, test_loader, state):
     net.eval()
     loss_avg = 0.0
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
+            data, target = data.to(DEVICE), target.to(DEVICE)
             # forward
             output = net(data)
             loss = F.cross_entropy(output, target)
@@ -219,7 +219,6 @@ def train_loop(
     test_loader,
     model_save_path_str,
     csv_file_path_str,
-    device,
 ):
     print("Beginning Training\n")
     # Main loop
@@ -228,8 +227,8 @@ def train_loop(
         state["epoch"] = epoch
         begin_epoch = time.time()
 
-        train(net, optimizer, scheduler, train_loader_in, train_loader_out, state, device)
-        test(net, test_loader, state, device)
+        train(net, optimizer, scheduler, train_loader_in, train_loader_out, state)
+        test(net, test_loader, state)
 
         # Save model
         torch.save(net.state_dict(), model_save_path_str)
@@ -273,14 +272,12 @@ def create_files_and_dirs(model_setting: str, freeze_resnet: bool, cifar10_pretr
     return csv_file_path_str, model_save_path_str
 
 
-def train_energy(model_setting, cifar10_pretrained_bool, freeze_backbone, device=DEVICE):
+def train_energy(model_setting, cifar10_pretrained_bool, freeze_backbone):
     torch.manual_seed(SEED)
     np.random.seed(SEED)
     cudnn.benchmark = True  # fire on all cylinders
     train_loader_in, train_loader_out, test_loader = get_data_loaders()
-    ResNet = get_raw_network(
-        model_setting=model_setting, cifar10_pretrained_bool=cifar10_pretrained_bool, device=device
-    )
+    ResNet = get_raw_network(model_setting=model_setting, cifar10_pretrained_bool=cifar10_pretrained_bool)
     if freeze_backbone:
         freeze_resnet(ResNet=ResNet)
     optimizer = torch.optim.SGD(ResNet.parameters(), initial_lr, momentum=momentum, weight_decay=decay, nesterov=True)
@@ -298,7 +295,6 @@ def train_energy(model_setting, cifar10_pretrained_bool, freeze_backbone, device
         test_loader,
         model_save_path_str,
         csv_file_path_str,
-        device,
     )
 
 
