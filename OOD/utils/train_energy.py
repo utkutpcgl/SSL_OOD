@@ -36,6 +36,7 @@ m_in = HYPS["m_in"]  # Energy loss scale.
 lambda_energy = HYPS["lambda"]  # Energy loss scale.
 decay = HYPS["decay"]  # Energy loss scale.
 momentum = HYPS["momentum"]  # Energy loss scale.
+energy_temperature = HYPS["energy_temperature"]  # Energy loss scale.
 
 # Checkpoints
 SAVE = "./checkpoints/"
@@ -44,6 +45,7 @@ TEST = False
 NGPU = 1
 WORKERS = 4
 SEED = 1
+
 SAVE_INFO = "energy_ft"
 
 DEVICE = "cuda:0"
@@ -66,8 +68,12 @@ REGULAR_WEIGHTS = {
     "ImageNet_Pretrained": "IMAGENET1K_V2",
 }
 
+# MEAN and standard deviation of channels of CIFAR-10 images
+MEAN = [x / 255 for x in [125.3, 123.0, 113.9]]
+STD = [x / 255 for x in [63.0, 62.1, 66.7]]
 
-def get_network(model_setting, cifar10_pretrained_bool, device):
+
+def get_raw_network(model_setting, cifar10_pretrained_bool, device):
     if cifar10_pretrained_bool:
         weight_path = CIFAR10_WEIGHTS[model_setting]
     else:
@@ -100,10 +106,6 @@ def get_network(model_setting, cifar10_pretrained_bool, device):
             ResNet.fc = torch.nn.Linear(number_of_input_features, NUMBER_OF_CLASSES)
     if NGPU > 1:
         ResNet = torch.nn.DataParallel(ResNet, device_ids=list(range(NGPU)))
-    if NGPU > 0:
-        ResNet.cuda()
-        torch.cuda.manual_seed(1)
-    cudnn.benchmark = True  # fire on all cylinders
     return ResNet.to(device)
 
 
@@ -119,22 +121,16 @@ def freeze_resnet(ResNet):
 
 def get_data_loaders():
     Path(SAVE).mkdir(exist_ok=True)
-    torch.manual_seed(SEED)
-    np.random.seed(SEED)
-
-    # mean and standard deviation of channels of CIFAR-10 images
-    mean = [0.4914, 0.4824, 0.4467]
-    std = [0.2471, 0.2436, 0.2616]
 
     train_transform = transforms.Compose(
         [
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, padding=4),
             transforms.ToTensor(),
-            transforms.Normalize(mean, std),
+            transforms.Normalize(MEAN, STD),
         ]
     )
-    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean, std)])
+    test_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(MEAN, STD)])
 
     train_data_in = datasets.CIFAR10("../cifar-10", train=True, transform=train_transform)
     test_data = datasets.CIFAR10("../cifar-10", train=False, transform=test_transform)
@@ -146,7 +142,7 @@ def get_data_loaders():
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean, std),
+                transforms.Normalize(MEAN, STD),
             ]
         )
     )
@@ -278,8 +274,13 @@ def create_files_and_dirs(model_setting: str, freeze_resnet: bool, cifar10_pretr
 
 
 def train_energy(model_setting, cifar10_pretrained_bool, freeze_backbone, device=DEVICE):
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    cudnn.benchmark = True  # fire on all cylinders
     train_loader_in, train_loader_out, test_loader = get_data_loaders()
-    ResNet = get_network(model_setting=model_setting, cifar10_pretrained_bool=cifar10_pretrained_bool, device=device)
+    ResNet = get_raw_network(
+        model_setting=model_setting, cifar10_pretrained_bool=cifar10_pretrained_bool, device=device
+    )
     if freeze_backbone:
         freeze_resnet(ResNet=ResNet)
     optimizer = torch.optim.SGD(ResNet.parameters(), initial_lr, momentum=momentum, weight_decay=decay, nesterov=True)
