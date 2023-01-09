@@ -1,4 +1,4 @@
-# SSL_OOD
+# Out of distribution detection with self-supervised ResNet baselines
 
 1. I first trained the SSL models and ImageNet pretrained model on CIFAR-10 with `utis/full_train_cifar10.py` and `train_cifar10.ipynb`.
 2. Then I have fine tuned all models with the energy loss function in `utils/train_energy.py` with `train_energy.ipynb`.
