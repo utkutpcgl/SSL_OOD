@@ -1,4 +1,14 @@
 # SSL_OOD
+
+1. I first trained the SSL models and ImageNet pretrained model on CIFAR-10 with `utis/full_train_cifar10.py` and `train_cifar10.ipynb`.
+2. Then I have fine tuned all models with the energy loss function in `utils/train_energy.py` with `train_energy.ipynb`.
+3. Later I have logged the results with `utils/test.py` by runing `test.ipynb`.
+
+The code includes necessary comments internally and hyperparameters are shared in `ft_hyperparameters.yaml`.
+
+
+
+# Personal Notes Regarding The Project
 OOD with SSL
 * Training SSL methods are infeasable (Barlow Twins 7 days on 16 v100s). Hence, I must use ResNet for OOD. I need CIFAR-10 pre-trained ResNet.
 

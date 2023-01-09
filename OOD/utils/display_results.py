@@ -1,10 +1,10 @@
 import numpy as np
 import sklearn.metrics as sk
 
-recall_level_default = 0.95
+RECALL_LEVEL_DEFAULT = 0.95
 
 
-def print_and_log(log_path: str, message):
+def print_and_log(message, log_path: str):
     with open(log_path, "a") as message_appender:
         message_appender.write(message + "\n")
 
@@ -27,7 +27,7 @@ def stable_cumsum(arr, rtol=1e-05, atol=1e-08):
     return out
 
 
-def fpr_and_fdr_at_recall(y_true, y_score, recall_level=recall_level_default, pos_label=None):
+def fpr_and_fdr_at_recall(y_true, y_score, recall_level=RECALL_LEVEL_DEFAULT, pos_label=None):
     classes = np.unique(y_true)
     if pos_label is None and not (
         np.array_equal(classes, [0, 1])
@@ -58,6 +58,7 @@ def fpr_and_fdr_at_recall(y_true, y_score, recall_level=recall_level_default, po
     tps = stable_cumsum(y_true)[threshold_idxs]
     fps = 1 + threshold_idxs - tps  # add one because of zero-based indexing
 
+    # Thresholds are chosen dynamically to adjust the fpr at 95. (FPR (at TPR95%))
     thresholds = y_score[threshold_idxs]
 
     recall = tps / tps[-1]
@@ -71,7 +72,7 @@ def fpr_and_fdr_at_recall(y_true, y_score, recall_level=recall_level_default, po
     return fps[cutoff] / (np.sum(np.logical_not(y_true)))  # , fps[cutoff]/(fps[cutoff] + tps[cutoff])
 
 
-def get_measures(_pos, _neg, recall_level=recall_level_default):
+def get_measures(_pos, _neg, recall_level=RECALL_LEVEL_DEFAULT):
     pos = np.array(_pos[:]).reshape((-1, 1))
     neg = np.array(_neg[:]).reshape((-1, 1))
     examples = np.squeeze(np.vstack((pos, neg)))
@@ -85,7 +86,7 @@ def get_measures(_pos, _neg, recall_level=recall_level_default):
     return auroc, aupr, fpr
 
 
-def show_performance(pos, neg, method_name="Ours", recall_level=recall_level_default, log_path="log"):
+def show_performance(pos, neg, method_name="Ours", recall_level=RECALL_LEVEL_DEFAULT, log_path="log"):
     """
     :param pos: 1's class, class to detect, outliers, or wrongly predicted
     example scores
@@ -94,17 +95,17 @@ def show_performance(pos, neg, method_name="Ours", recall_level=recall_level_def
 
     auroc, aupr, fpr = get_measures(pos[:], neg[:], recall_level)
 
-    print_and_log("\t\t\t" + method_name)
-    print_and_log("FPR{:d}:\t\t\t{:.2f}".format(int(100 * recall_level), 100 * fpr))
-    print_and_log("AUROC:\t\t\t{:.2f}".format(100 * auroc))
-    print_and_log("AUPR:\t\t\t{:.2f}".format(100 * aupr))
+    print_and_log("\t\t\t" + method_name, log_path)
+    print_and_log("FPR{:d}:\t\t\t{:.2f}".format(int(100 * recall_level), 100 * fpr), log_path)
+    print_and_log("AUROC:\t\t\t{:.2f}".format(100 * auroc), log_path)
+    print_and_log("AUPR:\t\t\t{:.2f}".format(100 * aupr), log_path)
     # print_and_log('FDR{:d}:\t\t\t{:.2f}'.format(int(100 * recall_level), 100 * fdr))
 
 
-def print_measures(auroc, aupr, fpr, method_name="Ours", recall_level=recall_level_default, log_path="log"):
-    print_and_log("\t\t\t\t" + method_name)
-    print_and_log("  FPR{:d} AUROC AUPR".format(int(100 * recall_level)))
-    print_and_log("& {:.2f} & {:.2f} & {:.2f}".format(100 * fpr, 100 * auroc, 100 * aupr))
+def print_measures(auroc, aupr, fpr, method_name="Ours", recall_level=RECALL_LEVEL_DEFAULT, log_path="log"):
+    print_and_log("\t\t\t\t" + method_name, log_path)
+    print_and_log("  FPR{:d} AUROC AUPR".format(int(100 * recall_level)), log_path)
+    print_and_log("& {:.2f} & {:.2f} & {:.2f}".format(100 * fpr, 100 * auroc, 100 * aupr), log_path)
     # print_and_log('FPR{:d}:\t\t\t{:.2f}'.format(int(100 * recall_level), 100 * fpr))
     # print_and_log('AUROC: \t\t\t{:.2f}'.format(100 * auroc))
     # print_and_log('AUPR:  \t\t\t{:.2f}'.format(100 * aupr))

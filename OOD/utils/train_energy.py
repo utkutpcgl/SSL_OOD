@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+from cProfile import label
 from pickle import TRUE
+from pyexpat import model
 import numpy as np
 import os
 import argparse
@@ -15,7 +17,10 @@ from tqdm import tqdm
 import yaml
 from pathlib import Path
 from typing import OrderedDict
-from utils.images_loader300k import RImages_300K
+import progressbar
+
+# from utils.images_loader300k import RImages_300K
+from utils.tinyimages_80mn_loader import TinyImages
 
 # %run MyOtherNotebook.ipynb To import from other ipynb files.
 # from models.wrn import WideResNet
@@ -43,7 +48,7 @@ SAVE = "./checkpoints/"
 LOAD = "./checkpoints/pretrained/"
 TEST = False
 NGPU = 1
-WORKERS = 4
+WORKERS = 8
 SEED = 1
 
 SAVE_INFO = "energy_ft"
@@ -134,11 +139,11 @@ def get_data_loaders():
 
     train_data_in = datasets.CIFAR10("../cifar-10", train=True, transform=train_transform)
     test_data = datasets.CIFAR10("../cifar-10", train=False, transform=test_transform)
-    ood_data = RImages_300K(
+    ood_data = TinyImages(
         transform=transforms.Compose(
             [
-                transforms.ToTensor(),
-                transforms.ToPILImage(),
+                # transforms.ToTensor(),
+                # transforms.ToPILImage(),
                 transforms.RandomCrop(32, padding=4),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
@@ -161,12 +166,36 @@ def get_data_loaders():
     return train_loader_in, train_loader_out, test_loader
 
 
+def get_average_energy_of_dataset(out_dataloader, in_dataloader, network):
+    """Get the average energy to be used as m_in or m_out for the loss."""
+    total_energy_out = 0
+    total_num_samples_out = 0
+    total_energy_in = 0
+    total_num_samples_in = 0
+    len_of_iterations = len(in_dataloader)
+    for (in_data, in_label), (out_data, out_label) in tqdm(zip(in_dataloader, out_dataloader), total=len_of_iterations):
+        out_data = out_data.to(DEVICE)
+        in_data = in_data.to(DEVICE)
+        out_output = network(out_data)
+        in_output = network(in_data)
+        Energy_out = -sum(torch.logsumexp(out_output, dim=1)).cpu().item()
+        Energy_in = -sum(torch.logsumexp(in_output, dim=1)).cpu().item()
+        total_energy_out += Energy_out
+        total_energy_in += Energy_in
+        total_num_samples_out += len(in_data)
+        total_num_samples_in += len(out_data)
+    averge_energy_out = total_energy_out / total_num_samples_out
+    averge_energy_in = total_energy_in / total_num_samples_in
+    return averge_energy_out, averge_energy_in
+
+
 def train(net, optimizer, scheduler, train_loader_in, train_loader_out, state):
     net.train()  # enter train mode
     loss_avg = 0.0
     # start at a random point of the outlier dataset; this induces more randomness without obliterating locality
     train_loader_out.dataset.offset = np.random.randint(len(train_loader_out.dataset))
-    for in_set, out_set in zip(train_loader_in, train_loader_out):
+    total_tqdms = len(train_loader_in)
+    for in_set, out_set in tqdm(zip(train_loader_in, train_loader_out), total=total_tqdms):
         data = torch.cat((in_set[0], out_set[0]), 0)
         target = in_set[1]
         data, target = data.to(DEVICE), target.to(DEVICE)
@@ -182,6 +211,7 @@ def train(net, optimizer, scheduler, train_loader_in, train_loader_out, state):
         loss += lambda_energy * (
             torch.pow(F.relu(Ec_in - m_in), 2).mean() + torch.pow(F.relu(m_out - Ec_out), 2).mean()
         )
+        trial_loss = 10 * (torch.pow(F.relu(Ec_in - m_in), 2).mean() + torch.pow(F.relu(m_out - Ec_out), 2).mean())
         loss.backward()
         optimizer.step()
         # exponential moving average
@@ -298,9 +328,30 @@ def train_energy(model_setting, cifar10_pretrained_bool, freeze_backbone):
     )
 
 
+def get_average_energy_of_network(model_setting):
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    cudnn.benchmark = True  # fire on all cylinders
+    train_loader_in, train_loader_out, test_loader = get_data_loaders()
+    log_path = Path(f"checkpoints/full_cifar10_train/{model_setting}_trained_on_cifar10.txt")
+    with open(str(log_path), "a") as logger:
+        logger.write("\n\nStart calculating the avg. energy for the model: " + model_setting)
+    print("Start calculating the avg. energy for the model: " + model_setting)
+    ResNet = get_raw_network(model_setting=model_setting, cifar10_pretrained_bool=True)
+    in_avg_energy, out_avg_energy = get_average_energy_of_dataset(
+        out_dataloader=train_loader_out, in_dataloader=train_loader_in, network=ResNet
+    )
+    energy_report = f"\ncifar10 average energy is {in_avg_energy}, tiny_images average energy is {out_avg_energy}"
+    print(energy_report)
+    with open(str(log_path), "a") as logger:
+        logger.write(energy_report + "\n")
+
+
 def main():
     train_energy(model_setting="BYOL", cifar10_pretrained_bool=True, freeze_backbone=False)
 
 
 if __name__ == "__main__":
-    main()
+    torch.cuda.set_per_process_memory_fraction(0.8, device=DEVICE)
+    for model_setting in MODEL_SETTINGS:
+        get_average_energy_of_network(model_setting=model_setting)

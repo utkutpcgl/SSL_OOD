@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from PIL import Image as PILImage
 import torchvision
 import yaml
+from tqdm import tqdm
 from pathlib import Path
 from utils.train_energy import (
     MODEL_SETTINGS,
@@ -25,31 +26,23 @@ from utils.train_energy import (
     SEED,
 )
 
-
-# go through rigamaroo to do ...utils.display_results import show_performance
-if __package__ is None:
-    import sys
-    from os import path
-
-    sys.path.append(path.dirname(path.dirname(path.abspath(__file__))))
-    from utils.display_results import (
-        show_performance,
-        get_measures,
-        print_measures,
-        print_and_log,
-    )  # change prints to logs
-    import utils.score_calculation as lib
+from utils.display_results import (
+    show_performance,
+    get_measures,
+    print_measures,
+    print_and_log,
+)  # change prints to logs
 
 # Log paths
-TRAINED_LOG_PATH = Path("/home/utku/Documents/repos/SSL_OOD/OOD/test/trained/")
-BASE_LOG_PATH = Path("/home/utku/Documents/repos/SSL_OOD/OOD/test/base/")
+TRAINED_LOG_PATH = Path("/home/utku/Documents/repos/SSL_OOD/OOD/tinyimages_results/test/trained/")
+BASE_LOG_PATH = Path("/home/utku/Documents/repos/SSL_OOD/OOD/tinyimages_results/test/base/")
 DEVICE = "cuda:0"
 
 # Trained weight paths
-CIFAR10_WEIGHTS = Path("/home/utku/Documents/repos/SSL_OOD/OOD/checkpoints/full_cifar10_train")
-FULL_ENERGY_FT_WEIGHTS = Path("/home/utku/Documents/repos/SSL_OOD/OOD/checkpoints/full_energy_finetune")
-LINEAR_ENERGY_FT_WEIGHTS = Path("/home/utku/Documents/repos/SSL_OOD/OOD/checkpoints/linear_energy_finetune")
-TRAINED_WEIGHT_PATHS_LIST = [CIFAR10_WEIGHTS, FULL_ENERGY_FT_WEIGHTS, LINEAR_ENERGY_FT_WEIGHTS]
+# CIFAR10_WEIGHTS = Path("/home/utku/Documents/repos/SSL_OOD/OOD/checkpoints/full_cifar10_train")
+FULL_ENERGY_FT_WEIGHTS = Path("/home/utku/Documents/repos/SSL_OOD/OOD/tinyimages_results/full_energy_finetune")
+LINEAR_ENERGY_FT_WEIGHTS = Path("/home/utku/Documents/repos/SSL_OOD/OOD/tinyimages_results/linear_energy_finetune")
+TRAINED_WEIGHT_PATHS_LIST = [FULL_ENERGY_FT_WEIGHTS, LINEAR_ENERGY_FT_WEIGHTS]
 SSL_WEIGHTS = Path("/home/utku/Documents/repos/SSL_OOD/SSL_checkpoints")
 
 # Data transforms.
@@ -84,10 +77,15 @@ def get_trained_network(weight_path):
     Args:
         weight_path (str): Path of the weight of the target model.
     """
+    weight_name = weight_path.name
     ResNet = torchvision.models.resnet50(weights="IMAGENET1K_V2")
     number_of_input_features = ResNet.fc.in_features
     ResNet.fc = torch.nn.Linear(number_of_input_features, NUMBER_OF_CLASSES)
-    ResNet.load_state_dict(torch.load(weight_path))
+    if "on_cifar10" in weight_name and "ft" not in weight_name:
+        net_state_dict = torch.load(weight_path)["net"]
+    else:
+        net_state_dict = torch.load(weight_path)
+    ResNet.load_state_dict(net_state_dict)
     if NGPU > 1:
         ResNet = torch.nn.DataParallel(ResNet, device_ids=list(range(NGPU)))
     return ResNet.to(DEVICE)
@@ -101,7 +99,9 @@ def get_base_network(model_setting):
 
 def get_test_loader() -> int:
     """Return ood_num_examples which is used to determine number of OOD samples."""
-    test_data = dset.CIFAR10("/home/utku/Documents/repos/SSL_OOD/cifar-10", train=False, transform=TEST_TRANSFORM)
+    test_data = dset.CIFAR10(
+        "/home/utku/Documents/repos/SSL_OOD/cifar-10", download=True, train=False, transform=TEST_TRANSFORM
+    )
     test_loader = torch.utils.data.DataLoader(
         test_data, batch_size=batch_size_TEST, shuffle=False, num_workers=WORKERS, pin_memory=True
     )
@@ -156,7 +156,7 @@ def get_and_print_results(ood_loader, in_score, auroc_list, aupr_list, fpr_list,
     aurocs.append(measures[0])
     auprs.append(measures[1])
     fprs.append(measures[2])
-    print_and_log(in_score[:3], out_score[:3], log_path)
+    print_and_log(f"in_scores: {in_score[:3]}, out_scores: {out_score[:3]}", log_path)
     auroc = np.mean(aurocs)
     aupr = np.mean(auprs)
     fpr = np.mean(fprs)
@@ -172,7 +172,7 @@ def show_right_wrong_perf(right_score, wrong_score, log_path):
     print_and_log("Error Rate {:.2f}".format(100 * num_wrong / (num_wrong + num_right)), log_path)
     # /////////////// Error Detection ///////////////
     print_and_log("\n\nError Detection", log_path)
-    show_performance(wrong_score, right_score, log_path)
+    show_performance(wrong_score, right_score, log_path=log_path)
 
 
 def get_texture_results(ood_num_examples, in_score, ResNet, log_path):
@@ -205,7 +205,9 @@ def get_other_results(ood_num_examples, in_score, ResNet, log_path):
     get_and_print_results(ood_loader, in_score, auroc_list, aupr_list, fpr_list, ResNet, ood_num_examples, log_path)
 
     # /////////////// Arithmetic Mean of Images ///////////////
-    ood_data = dset.CIFAR100("/home/utku/Documents/repos/SSL_OOD/cifar-100", train=False, transform=TEST_TRANSFORM)
+    ood_data = dset.CIFAR100(
+        "/home/utku/Documents/repos/SSL_OOD/cifar-100", download=True, train=False, transform=TEST_TRANSFORM
+    )
 
     class AvgOfPair(torch.utils.data.Dataset):
         def __init__(self, dataset):
@@ -291,7 +293,6 @@ def get_other_results(ood_num_examples, in_score, ResNet, log_path):
     ood_loader.dataset.transform = trn.Compose([trn.ToTensor(), rgb_shift, trn.Normalize(MEAN, STD)])
     print_and_log("\n\nRGB Ghosted/Shifted Image Detection", log_path)
     get_and_print_results(ood_loader, in_score, auroc_list, aupr_list, fpr_list, ResNet, ood_num_examples, log_path)
-
     # /////////////// Inverted Images ///////////////
     # not done on all channels to make image ood with higher probability
     invert = lambda x: torch.cat(
@@ -310,7 +311,7 @@ def get_other_results(ood_num_examples, in_score, ResNet, log_path):
     print_and_log("\n\nInverted Image Detection", log_path)
     get_and_print_results(ood_loader, in_score, auroc_list, aupr_list, fpr_list, ResNet, ood_num_examples, log_path)
 
-    # /////////////// Mean Results ///////////////
+    # /////////////// Mean Results /////////print_measures//////
     print_and_log("\n\nMean Validation Results", log_path)
     print_measures(np.mean(auroc_list), np.mean(aupr_list), np.mean(fpr_list), log_path=log_path)
 
@@ -333,18 +334,21 @@ def test_network(ResNet, log_path):
 def test_all_networks():
     # For trained weights
     all_trained_weights = get_all_trained_weights()
-    for trained_weight_path in all_trained_weights:
-        log_path = f"/home/utku/Documents/repos/SSL_OOD/OOD/test/trained/{trained_weight_path.stem}_log.txt"
+    print("Test trained weights:")
+    for trained_weight_path in tqdm(all_trained_weights):
+        log_path = (
+            f"/home/utku/Documents/repos/SSL_OOD/OOD/tinyimages_results/test/trained/{trained_weight_path.stem}_log.txt"
+        )
         Path(log_path).parent.mkdir(exist_ok=True, parents=True)
         ResNet_trained = get_trained_network(trained_weight_path)
         test_network(ResNet_trained, log_path)
 
-    # For base weights
-    for model_setting in MODEL_SETTINGS:
-        log_path = f"/home/utku/Documents/repos/SSL_OOD/OOD/test/base/{model_setting}_log.txt"
-        Path(log_path).parent.mkdir(exist_ok=True, parents=True)
-        ResNet_base = get_base_network(model_setting=model_setting)
-        test_network(ResNet_base, log_path)
+    # # For base weights
+    # for model_setting in MODEL_SETTINGS:
+    #     log_path = f"/home/utku/Documents/repos/SSL_OOD/OOD/tinyimages_results/test/base/{model_setting}_log.txt"
+    #     Path(log_path).parent.mkdir(exist_ok=True, parents=True)
+    #     ResNet_base = get_base_network(model_setting=model_setting)
+    #     test_network(ResNet_base, log_path)
 
 
 # TODO check below
