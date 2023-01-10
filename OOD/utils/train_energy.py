@@ -166,26 +166,24 @@ def get_data_loaders():
     return train_loader_in, train_loader_out, test_loader
 
 
+def get_avg_energy(dataloader, network):
+    total_energy = 0
+    total_num_samples = 0
+    len_of_iterations = len(dataloader)
+    for (data, label) in tqdm(dataloader, total=len_of_iterations):
+        data = data.to(DEVICE)
+        output = network(data)
+        Energy_in = -sum(torch.logsumexp(output, dim=1)).cpu().item()
+        total_energy += Energy_in
+        total_num_samples += len(data)
+    avg_energy = total_energy/total_num_samples 
+    return avg_energy
+
+
 def get_average_energy_of_dataset(out_dataloader, in_dataloader, network):
     """Get the average energy to be used as m_in or m_out for the loss."""
-    total_energy_out = 0
-    total_num_samples_out = 0
-    total_energy_in = 0
-    total_num_samples_in = 0
-    len_of_iterations = len(in_dataloader)
-    for (in_data, in_label), (out_data, out_label) in tqdm(zip(in_dataloader, out_dataloader), total=len_of_iterations):
-        out_data = out_data.to(DEVICE)
-        in_data = in_data.to(DEVICE)
-        out_output = network(out_data)
-        in_output = network(in_data)
-        Energy_out = -sum(torch.logsumexp(out_output, dim=1)).cpu().item()
-        Energy_in = -sum(torch.logsumexp(in_output, dim=1)).cpu().item()
-        total_energy_out += Energy_out
-        total_energy_in += Energy_in
-        total_num_samples_out += len(in_data)
-        total_num_samples_in += len(out_data)
-    averge_energy_out = total_energy_out / total_num_samples_out
-    averge_energy_in = total_energy_in / total_num_samples_in
+    averge_energy_out = get_avg_energy(out_dataloader, network)
+    averge_energy_in = get_avg_energy(in_dataloader, network)
     return averge_energy_out, averge_energy_in
 
 
@@ -311,7 +309,7 @@ def train_energy(model_setting, cifar10_pretrained_bool, freeze_backbone):
     if freeze_backbone:
         freeze_resnet(ResNet=ResNet)
     optimizer = torch.optim.SGD(ResNet.parameters(), initial_lr, momentum=momentum, weight_decay=decay, nesterov=True)
-    total_num_steps = epochs * len(train_loader_in)
+    total_num_steps = epochs * len(train_loader_in)  # BUG this here might be wrong.
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=total_num_steps, eta_min=final_lr)
     csv_file_path_str, model_save_path_str = create_files_and_dirs(
         model_setting=model_setting, freeze_resnet=freeze_backbone, cifar10_pretrained_bool=cifar10_pretrained_bool

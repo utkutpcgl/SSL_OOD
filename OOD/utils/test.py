@@ -156,7 +156,7 @@ def get_and_print_results(ood_loader, in_score, auroc_list, aupr_list, fpr_list,
     aurocs.append(measures[0])
     auprs.append(measures[1])
     fprs.append(measures[2])
-    print_and_log(in_score[:3], out_score[:3], log_path)
+    print_and_log(f"in_score: {in_score[:3]}, out_score: {out_score[:3]}", log_path)
     auroc = np.mean(aurocs)
     aupr = np.mean(auprs)
     fpr = np.mean(fprs)
